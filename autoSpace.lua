@@ -32,11 +32,16 @@ function getClipFilePath(clip)
     return nil
 end
 
-
-function getClipStartTime(clip)
+function getClipStartTime(clip) -- TODO: Does this need to be adjusted for frame rate?
     local sourceStartTime = clip:GetSourceStartTime()
     print("Clip source start time: " .. sourceStartTime) -- Debug: Print the source start time
     return sourceStartTime
+end
+
+function getClipEndTime(clip) -- TODO: Does this need to be adjusted for frame rate?
+    local sourceEndTime = clip:GetSourceEndTime()
+    print("Clip source end time: " .. sourceEndTime) -- Debug: Print the source end time
+    return sourceEndTime
 end
 
 function analyzeAudio(filePath, startTime)
@@ -76,6 +81,7 @@ function autoSpace()
     clips = timeline:GetItemListInTrack("video", 1)
 
     lastClip = nil
+    lastClipEnd = 0
 
     -- Loop through each clip and extract its file path (limit to first 5 clips)
     for i, clip in ipairs(clips) do
@@ -85,11 +91,14 @@ function autoSpace()
         if filePath then
             print("Clip " .. i .. " file path: " .. filePath)
             -- Pass this file path to FFmpeg for audio analysis
-            maxVolume = analyzeAudio(filePath, getClipStartTime(clip, timeline:GetSetting("timelineFrameRate")))
+            local clipStartTime = getClipStartTime(clip)
+            maxVolume = analyzeAudio(filePath, clipStartTime)
 
             if maxVolume and maxVolume > audioThreshold then -- Adjust threshold as needed
-                print(string.format("Clip %d: Audio too loud at start (%.2f dB). Consider adjusting start point.", i, maxVolume))
-                -- Logic to adjust the clip's start point can go here
+                print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i, maxVolume))
+                -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
+                
+                -- if the clip start is the same or lower as the previous clip (or the beginning of the source file), we can stop
             else
                 print(string.format("Clip %d: Audio level acceptable at start (%.2f dB).", i, maxVolume or -999))
             end
@@ -98,6 +107,7 @@ function autoSpace()
         end
 
         lastClip = clip -- Store last clip in case we need to expand past its outpoint
+        lastClipEnd = getClipEndTime(clip)
     end
 
     print("Auto spacing completed.")
