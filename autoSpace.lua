@@ -124,7 +124,7 @@ function autoSpace()
 
     -- Loop through each clip and extract its file path (limit to first 5 clips)
     for i, clip in ipairs(clips) do
-        if i > 1 then break end -- Stop after processing 5 clips
+        -- if i > 500 then break end -- Stop after processing 10 clips
 
         local filePath = getClipFilePath(clip)
         if filePath then
@@ -149,16 +149,31 @@ function autoSpace()
             -- Append the adjusted clip to the new tracks
             local mediaPoolItem = clip:GetMediaPoolItem()
             if mediaPoolItem then
-                local duration = timecodeToFrames(mediaPoolItem:GetClipProperty("Duration"))
-                local recordFrame = timecodeToFrames(timeline:GetCurrentTimecode())
+                -- Convert clipStartTime and clipEndTime to frames
+                local startFrame = math.floor(clipStartTime * timelineFrameRate)
+                local endFrame = math.floor(getClipEndTime(clip) * timelineFrameRate)
+                local recordFrame = timecodeToFrames(timeline:GetCurrentTimecode(), timelineFrameRate)
+                -- Ensure startFrame and endFrame are within valid bounds
+                if startFrame < 0 then startFrame = 0 end
+                if endFrame <= startFrame then
+                    print("Invalid clip range: startFrame >= endFrame")
+                    return
+                end
 
+                -- Create the clipInfo table
                 local clipInfo = {
                     ["mediaPoolItem"] = mediaPoolItem,
-                    ["startFrame"] = 0, -- Start from the beginning of the source clip
-                    ["endFrame"] = duration, -- Use the full duration of the source clip
+                    ["startFrame"] = startFrame, -- Start from the adjusted clipStartTime
+                    ["endFrame"] = endFrame, -- End at the original clipEndTime
                     ["trackIndex"] = newVideoTrackIndex,
-                    ["recordFrame"] = recordFrame
+                    ["recordFrame"] = recordFrame -- Place the clip after the last one
                 }
+
+                --                 print("ClipInfo:")
+                -- print("  startFrame: " .. startFrame)
+                -- print("  endFrame: " .. endFrame)
+                -- print("  recordFrame: " .. clipInfo["recordFrame"])
+                -- print("  trackIndex: " .. clipInfo["trackIndex"])
 
                 local success = media_pool:AppendToTimeline({clipInfo})
                 if success then
