@@ -133,6 +133,7 @@ function autoSpace()
             local clipStartTime = getClipStartTime(clip)
             local maxVolume = analyzeAudio(filePath, clipStartTime)
 
+            -- Locate Start Point if audio is too loud at beginning of clip
             if maxVolume and maxVolume > audioThreshold then -- Adjust threshold as needed
                 print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
@@ -146,12 +147,39 @@ function autoSpace()
                 print(string.format("Clip %d: Audio level acceptable at start (%.2f dB).", i, maxVolume or -999))
             end
 
+            -- Locate end point if audio is too loud at end of clip (e.g. we haven't finished talking yet maybe)
+            local clipEndTime = getClipEndTime(clip)
+            maxVolume =  analyzeAudio(filePath, clipEndTime)
+
+            -- Check if the next clip exists and get its start time
+            local nextClipStart = nil
+            if clips[i + 1] then
+                nextClipStart = getClipStartTime(clips[i + 1])
+            end
+            -- If the next clip doesn't exist, set nextClipStart to a large value
+            if not nextClipStart then
+                nextClipStart = math.huge
+            end
+            if maxVolume and maxVolume > audioThreshold then -- Adjust threshold as needed
+                print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i, maxVolume))
+                -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
+                while maxVolume > audioThreshold and clipEndTime < nextClipStart do
+                    clipEndTime = clipEndTime + 0.1 -- TODO, what happens when we hit the end of the source file? I expect this breaks
+                    maxVolume = analyzeAudio(filePath, clipEndTime)
+                end
+                print(string.format("Adjusted end time to %.2f seconds, max volume: %.2f dB", clipEndTime, maxVolume))
+            else
+                print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
+            end
+            
+            local startFrame = math.floor(clipStartTime * timelineFrameRate)
+            local endFrame = math.floor(clipEndTime * timelineFrameRate)
+
             -- Append the adjusted clip to the new tracks
             local mediaPoolItem = clip:GetMediaPoolItem()
             if mediaPoolItem then
                 -- Convert clipStartTime and clipEndTime to frames
-                local startFrame = math.floor(clipStartTime * timelineFrameRate)
-                local endFrame = math.floor(getClipEndTime(clip) * timelineFrameRate)
+
                 local recordFrame = timecodeToFrames(timeline:GetCurrentTimecode(), timelineFrameRate)
                 -- Ensure startFrame and endFrame are within valid bounds
                 if startFrame < 0 then startFrame = 0 end
@@ -186,7 +214,7 @@ function autoSpace()
             end
 
             lastClip = clip -- Store last clip in case we need to expand past its outpoint
-            lastClipEnd = getClipEndTime(clip)
+            lastClipEnd = endFrame
         end
     end
 
