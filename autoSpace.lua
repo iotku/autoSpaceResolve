@@ -76,9 +76,6 @@ function analyzeAudio(filePath, startTime)
     local result = handle:read("*a")
     handle:close()
 
-    -- Debug: Print the FFmpeg output
-    -- print("FFmpeg output: " .. result)
-
     -- Extract max volume from FFmpeg output
     for line in result:gmatch("[^\r\n]+") do
         if line:find("max_volume") then
@@ -171,7 +168,7 @@ function autoSpace()
             else
                 print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
             end
-            
+
             local startFrame = math.floor(clipStartTime * timelineFrameRate)
             local endFrame = math.floor(clipEndTime * timelineFrameRate)
 
@@ -180,7 +177,7 @@ function autoSpace()
             if mediaPoolItem then
                 -- Convert clipStartTime and clipEndTime to frames
 
-                local recordFrame = timecodeToFrames(timeline:GetCurrentTimecode(), timelineFrameRate)
+                local recordFrame = timecodeToFrames(timeline:GetCurrentTimecode())
                 -- Ensure startFrame and endFrame are within valid bounds
                 if startFrame < 0 then startFrame = 0 end
                 if endFrame <= startFrame then
@@ -197,12 +194,6 @@ function autoSpace()
                     ["recordFrame"] = recordFrame -- Place the clip after the last one
                 }
 
-                --                 print("ClipInfo:")
-                -- print("  startFrame: " .. startFrame)
-                -- print("  endFrame: " .. endFrame)
-                -- print("  recordFrame: " .. clipInfo["recordFrame"])
-                -- print("  trackIndex: " .. clipInfo["trackIndex"])
-
                 local success = media_pool:AppendToTimeline({clipInfo})
                 if success then
                     print("Clip added to new video track successfully.")
@@ -213,7 +204,6 @@ function autoSpace()
                 print("Could not retrieve file path for clip " .. i)
             end
 
-            lastClip = clip -- Store last clip in case we need to expand past its outpoint
             lastClipEnd = endFrame
         end
     end
