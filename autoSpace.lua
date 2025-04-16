@@ -150,6 +150,9 @@ function Main()
 
     local lastClipEnd = 0
 
+    -- Set the current timecode to the beginning of the timeline
+    Timeline:SetCurrentTimecode('01:00:00:00')
+
     -- Loop through each clip and extract its file path (limit to first 5 clips)
     for i, clip in ipairs(clips) do
         -- if i > 500 then break end -- Stop after processing 10 clips
