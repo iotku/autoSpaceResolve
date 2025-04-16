@@ -26,6 +26,15 @@ ResolveProjectManager = ResolveObj:GetProjectManager()
 -- Get the current project
 ResolveProject = ResolveProjectManager:GetCurrentProject()
 
+if ResolveProject then
+    print("Connected to project: " .. ResolveProject:GetName())
+else
+    print("No project is currently open, please open a project.")
+    -- abort script
+    return
+end
+
+
 -- Get the MediaPool
 ResolveMediaPool = ResolveProject:GetMediaPool()
 
@@ -35,20 +44,13 @@ Timeline = ResolveProject:GetCurrentTimeline()
 -- Get TL framerate
 TimelineFrameRate = Timeline:GetSetting("timelineFrameRate")
 
-if ResolveProject then
-    print("Connected to project2: " .. ResolveProject:GetName())
-else
-    print("No project is currently open, please open a project.")
-    -- abort script
-    return
-end
-
 -- We consider any audio below -20dB to be silence
 AudioThreshold = -20
 
--- Return timecode value (e.g. 00:05:59:12) as number of frames
--- relative to TimelineFrameRate
--- TODO: Validate expectation, test this
+--- Converts a timecode string (e.g. "00:05:59:12") into a frame count.
+-- The calculation is based on a global TimelineFrameRate.
+-- @param timecode (string) Timecode in the format "HH:MM:SS:FF".
+-- @return (number) Total number of frames relative to TimelineFrameRate.
 function TimecodeToFrames(timecode)
     -- Split the timecode into hours, minutes, seconds, and frames
     local hours, minutes, seconds, frames = timecode:match("(%d+):(%d+):(%d+):(%d+)")
@@ -58,10 +60,12 @@ function TimecodeToFrames(timecode)
     frames = tonumber(frames)
 
     -- Convert the timecode to total frames
-    local totalFrames = (hours * 3600 * TimelineFrameRate) + (minutes * 60 * TimelineFrameRate) + (seconds * TimelineFrameRate) + frames
+    local totalFrames = (hours * 3600 * TimelineFrameRate) +
+                        (minutes * 60 * TimelineFrameRate) +
+                        (seconds * TimelineFrameRate) +
+                        frames
     return totalFrames
 end
-
 
 -- Function to get the file path of a clip
 function GetClipFilePath(clip)
@@ -140,7 +144,6 @@ function Main()
     end
 
     -- TODO: Ensure we can handle timelines with multiple A/V tracks correctly
-
     -- Determine the indices of the new tracks
     local newVideoTrackIndex = initialVideoTrackCount + 1
     local newAudioTrackIndex = initialAudioTrackCount + 1
