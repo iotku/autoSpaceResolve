@@ -19,7 +19,9 @@ timelineFrameRate = timeline:GetSetting("timelineFrameRate")
 if project then
     print("Connected to project2: " .. project:GetName())
 else
-    print("No project is currently open.")
+    print("No project is currently open, please open a project.")
+    -- abort script
+    return
 end
 
 -- We consider any audio below -20dB to be silence
