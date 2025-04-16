@@ -101,17 +101,20 @@ function Main()
     local initialVideoTrackCount = Timeline:GetTrackCount("video")
     local initialAudioTrackCount = Timeline:GetTrackCount("audio")
 
+    -- Create a new video and audio track
+    local videoTrackCreated = Timeline:AddTrack("video")
+    local audioTrackCreated = Timeline:AddTrack("audio")
+
+    if not videoTrackCreated or not audioTrackCreated then
+        print("Failed to create new video/audio track. Aborting.")
+        return
+    end
+
     -- TODO: Ensure we can handle timelines with multiple A/V tracks correctly
 
     -- Determine the indices of the new tracks
     local newVideoTrackIndex = initialVideoTrackCount + 1
     local newAudioTrackIndex = initialAudioTrackCount + 1
-    -- if not newVideoTrackIndex or not newAudioTrackIndex then
-    --     print("Failed to create new tracks.")
-    --     return
-    -- end
-    print("Created new video track at index: " .. newVideoTrackIndex)
-    print("Created new audio track at index: " .. newAudioTrackIndex)
 
     -- Get all clips in the original video track
     local clips = Timeline:GetItemListInTrack("video", 1)
