@@ -1,14 +1,33 @@
+-- autoSpace by iotku for Davinchi Resolve
+-- /Expected/ USAGE (Subject to change)
+-- -------------
+-- Create a timeline with a SINGLE video track and a SINGLE audio track (dialog)
+-- Transcribe audio and remove silence
+--
+-- The script will determine if the beginning of the clip is too loud and if so
+-- move the start point backwards until the AudioThreshold is not exceeded.
+--
+-- Then, the script will determine if the ending of the clip is too loud,
+-- and move forward until the AudioThreshold is not exceeded.
+--
+-- The clips will then be added to a new video track with adjusted In/Out points
+--
+
+-- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
+-- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
+local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
+
 -- Get the Resolve application instance
 ResolveObj = app:GetResolve()
-
--- Get the MediaPool
-ResolveMediaPool = ResolveProject:GetMediaPool()
 
 -- Get the project manager
 ResolveProjectManager = ResolveObj:GetProjectManager()
 
 -- Get the current project
 ResolveProject = ResolveProjectManager:GetCurrentProject()
+
+-- Get the MediaPool
+ResolveMediaPool = ResolveProject:GetMediaPool()
 
 -- Get the current timeline
 Timeline = ResolveProject:GetCurrentTimeline()
