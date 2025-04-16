@@ -46,10 +46,9 @@ end
 -- We consider any audio below -20dB to be silence
 AudioThreshold = -20
 
--- Define the path to the FFmpeg executable
-local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
-
-
+-- Return timecode value (e.g. 00:05:59:12) as number of frames
+-- relative to TimelineFrameRate
+-- TODO: Validate expectation, test this
 function TimecodeToFrames(timecode)
     -- Split the timecode into hours, minutes, seconds, and frames
     local hours, minutes, seconds, frames = timecode:match("(%d+):(%d+):(%d+):(%d+)")
@@ -86,16 +85,27 @@ function GetClipEndTime(clip) -- TODO: Does this need to be adjusted for frame r
     return sourceEndTime
 end
 
+-- Return max_volume from ffmpeg for short section of audio
+-- @filePath (string) the filesystem path of the source media
+-- @startTime (int) where in the file to start the analysis in SECONDS
+-- @return (float) the max_volume returned by ffmpeg or nil
 function AnalyzeAudio(filePath, startTime)
     local duration = 0.1 -- Analyze the first 0.1 seconds
+    -- TODO: Does input redirection work as expected on windows? is it even necessiary?
     local command = string.format(
         ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null /dev/null 2>&1",
         startTime, duration, filePath
     )
     print("Running command: " .. command) -- Debug: Print the command
     local handle = io.popen(command)
-    local result = handle:read("*a")
-    handle:close()
+    local result -- ffmpeg command output to parse
+    if handle then
+        result = handle:read("*a")
+        handle:close()
+    else
+        print("Error: AnalyzeAudio failed to close ffmpeg command.")
+        return nil
+    end
 
     -- Extract max volume from FFmpeg output
     for line in result:gmatch("[^\r\n]+") do
