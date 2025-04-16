@@ -12,6 +12,7 @@
 --
 -- The clips will then be added to a new video track with adjusted In/Out points
 --
+-- This currently only works for timelines with 1 Video and one 1 Audio Track
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
@@ -45,7 +46,13 @@ Timeline = ResolveProject:GetCurrentTimeline()
 TimelineFrameRate = Timeline:GetSetting("timelineFrameRate")
 
 -- We consider any audio below -20dB to be silence
-AudioThreshold = -20
+AudioThresholdStart = -20
+
+-- A bit lower to account for trailing off
+AudioThresholdEnd = -30
+
+-- time to add to each in extra in seconds -- TODO: This doesn't seem effective
+ClipBufferTime = 1.2
 
 --- Converts a timecode string (e.g. "00:05:59:12") into a frame count.
 -- The calculation is based on a global TimelineFrameRate.
@@ -77,21 +84,21 @@ function GetClipFilePath(clip)
     return nil
 end
 
-function GetClipStartTime(clip) -- TODO: Does this need to be adjusted for frame rate?
+function GetClipStartTime(clip)
     local sourceStartTime = clip:GetSourceStartTime()
     print("Clip source start time: " .. sourceStartTime) -- Debug: Print the source start time
     return sourceStartTime
 end
 
-function GetClipEndTime(clip) -- TODO: Does this need to be adjusted for frame rate?
+function GetClipEndTime(clip)
     local sourceEndTime = clip:GetSourceEndTime()
     print("Clip source end time: " .. sourceEndTime) -- Debug: Print the source end time
     return sourceEndTime
 end
 
 -- Return max_volume from ffmpeg for short section of audio
--- @filePath (string) the filesystem path of the source media
--- @startTime (int) where in the file to start the analysis in SECONDS
+-- @param filePath (string) the filesystem path of the source media
+-- @param startTime (int) where in the file to start the analysis in SECONDS
 -- @return (float) the max_volume returned by ffmpeg or nil
 function AnalyzeAudio(filePath, startTime)
     local duration = 0.1 -- Analyze the first 0.1 seconds
@@ -168,12 +175,16 @@ function Main()
             local maxVolume = AnalyzeAudio(filePath, clipStartTime)
 
             -- Locate Start Point if audio is too loud at beginning of clip
-            if maxVolume and maxVolume > AudioThreshold then -- Adjust threshold as needed
+            if maxVolume and maxVolume > AudioThresholdStart then -- Adjust threshold as needed
                 print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
-                while maxVolume > AudioThreshold and clipStartTime > lastClipEnd do
+                while maxVolume > AudioThresholdStart and clipStartTime > lastClipEnd do
                     clipStartTime = clipStartTime - 0.1
                     maxVolume = AnalyzeAudio(filePath, clipStartTime)
+                end
+                local bufferedTime = clipStartTime - ClipBufferTime -- add additional buffer for saftey
+                if bufferedTime > lastClipEnd then
+                    clipStartTime = bufferedTime
                 end
                 print(string.format("Adjusted start time to %.2f seconds, max volume: %.2f dB", clipStartTime, maxVolume))
                 -- if the clip start is the same or lower as the previous clip (or the beginning of the source file), we can stop
@@ -190,17 +201,25 @@ function Main()
             if clips[i + 1] then
                 nextClipStart = GetClipStartTime(clips[i + 1])
             end
+
             -- If the next clip doesn't exist, set nextClipStart to a large value
             if not nextClipStart then
                 nextClipStart = math.huge
             end
-            if maxVolume and maxVolume > AudioThreshold then -- Adjust threshold as needed
+
+            if maxVolume and maxVolume > AudioThresholdEnd then -- Adjust threshold as needed
                 print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
-                while maxVolume > AudioThreshold and clipEndTime < nextClipStart do
+                while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
                     clipEndTime = clipEndTime + 0.1 -- TODO, what happens when we hit the end of the source file? I expect this breaks
                     maxVolume = AnalyzeAudio(filePath, clipEndTime)
                 end
+
+                local bufferedTime = clipEndTime + ClipBufferTime -- add additional buffer for saftey
+                if bufferedTime < nextClipStart then
+                    clipEndTime = bufferedTime
+                end
+
                 print(string.format("Adjusted end time to %.2f seconds, max volume: %.2f dB", clipEndTime, maxVolume))
             else
                 print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
