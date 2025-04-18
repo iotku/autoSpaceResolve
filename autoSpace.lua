@@ -51,8 +51,10 @@ AudioThresholdStart = -20
 -- A bit lower to account for trailing off
 AudioThresholdEnd = -30
 
--- time to add to each in extra in seconds -- TODO: This doesn't seem effective
-ClipBufferTime = 1.2
+-- Amount of time to process audio to space in seconds
+-- NOTE: the larger this is the more accurate the analysis, but the longer it takes
+--       if the seek time is too large, it may not be able to find the start/end points
+AnalysisSeekTime = 0.2
 
 --- Converts a timecode string (e.g. "00:05:59:12") into a frame count.
 -- The calculation is based on a global TimelineFrameRate.
@@ -101,7 +103,7 @@ end
 -- @param startTime (int) where in the file to start the analysis in SECONDS
 -- @return (float) the max_volume returned by ffmpeg or nil
 function AnalyzeAudio(filePath, startTime)
-    local duration = 0.1 -- Analyze the first 0.1 seconds
+    local duration = AnalysisSeekTime -- Analyze the first AnalysisSeekTime seconds
     -- TODO: Does input redirection work as expected on windows? is it even necessiary?
     local command = string.format(
         ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null /dev/null 2>&1",
@@ -179,12 +181,8 @@ function Main()
                 print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
                 while maxVolume > AudioThresholdStart and clipStartTime > lastClipEnd do
-                    clipStartTime = clipStartTime - 0.1
+                    clipStartTime = clipStartTime - AnalysisSeekTime
                     maxVolume = AnalyzeAudio(filePath, clipStartTime)
-                end
-                local bufferedTime = clipStartTime - ClipBufferTime -- add additional buffer for saftey
-                if bufferedTime > lastClipEnd then
-                    clipStartTime = bufferedTime
                 end
                 print(string.format("Adjusted start time to %.2f seconds, max volume: %.2f dB", clipStartTime, maxVolume))
                 -- if the clip start is the same or lower as the previous clip (or the beginning of the source file), we can stop
@@ -198,8 +196,10 @@ function Main()
 
             -- Check if the next clip exists and get its start time
             local nextClipStart = nil
+            local nextClipEnd = nil
             if clips[i + 1] then
                 nextClipStart = GetClipStartTime(clips[i + 1])
+                nextClipEnd = GetClipEndTime(clips[i + 1])
             end
 
             -- If the next clip doesn't exist, set nextClipStart to a large value
@@ -211,13 +211,21 @@ function Main()
                 print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
                 while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
-                    clipEndTime = clipEndTime + 0.1 -- TODO, what happens when we hit the end of the source file? I expect this breaks
+                    clipEndTime = clipEndTime + AnalysisSeekTime -- TODO, what happens when we hit the end of the source file? I expect this breaks
                     maxVolume = AnalyzeAudio(filePath, clipEndTime)
                 end
 
-                local bufferedTime = clipEndTime + ClipBufferTime -- add additional buffer for saftey
-                if bufferedTime < nextClipStart then
-                    clipEndTime = bufferedTime
+                -- ensure clipEndTime is not greater than the start of the next clip
+                if clipEndTime > nextClipStart then
+                    clipEndTime = nextClipStart
+                end
+
+                -- Adjust the next clip's start time if it overlaps with the current clip's end time
+                if nextClipStart and nextClipStart < clipEndTime then
+                    if nextClipEnd and nextClipStart > nextClipEnd then
+                        nextClipStart = nextClipEnd -- Ensure the next clip's start doesn't exceed its end
+                    end
+                    print(string.format("Adjusted next clip's start time to %.2f seconds to avoid overlap.", nextClipStart))
                 end
 
                 print(string.format("Adjusted end time to %.2f seconds, max volume: %.2f dB", clipEndTime, maxVolume))
@@ -225,6 +233,7 @@ function Main()
                 print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
             end
 
+            -- Convert clipStartTime and clipEndTime to adding to the new tracks
             local startFrame = math.floor(clipStartTime * TimelineFrameRate)
             local endFrame = math.floor(clipEndTime * TimelineFrameRate)
 
@@ -233,6 +242,8 @@ function Main()
             if mediaPoolItem then
                 -- Convert clipStartTime and clipEndTime to frames
 
+                -- TODO: this is dependent on the playhead which can be moved during processing
+                -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
                 local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
                 -- Ensure startFrame and endFrame are within valid bounds
                 if startFrame < 0 then startFrame = 0 end
