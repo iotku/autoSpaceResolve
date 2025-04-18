@@ -245,7 +245,7 @@ function Main()
                 local clipInfo = {
                     ["mediaPoolItem"] = mediaPoolItem,
                     ["startFrame"] = startFrame, -- Start from the adjusted clipStartTime
-                    ["endFrame"] = endFrame, -- End at the original clipEndTime
+                    ["endFrame"] = endFrame, -- End at the adjusted clipEndTime
                     ["trackIndex"] = newVideoTrackIndex,
                     ["recordFrame"] = recordFrame -- Place the clip after the last one
                 }
@@ -260,7 +260,7 @@ function Main()
                 print("Could not retrieve file path for clip " .. i)
             end
 
-            lastClipEnd = endFrame
+            lastClipEnd = clipEndTime
         end
     end
 
