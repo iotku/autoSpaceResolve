@@ -24,6 +24,7 @@
 -- - If you have multiple audio tracks in the source material, it will only produce the first audio track
 --   onto the new audio track
 -- - The new audio track is in mono (1.0), not stereo even if the source is a 2.0 audio track
+
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
 local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
@@ -41,7 +42,7 @@ if ResolveProject then
     print("Connected to project: " .. ResolveProject:GetName())
 else
     print("No project is currently open, please open a project.")
-    -- abort script
+    -- abort script early
     return
 end
 
@@ -95,18 +96,6 @@ function GetClipFilePath(clip)
         return clipProperties["File Path"]
     end
     return nil
-end
-
-function GetClipStartTime(clip)
-    local sourceStartTime = clip:GetSourceStartTime()
-    print("Clip source start time: " .. sourceStartTime) -- Debug: Print the source start time
-    return sourceStartTime
-end
-
-function GetClipEndTime(clip)
-    local sourceEndTime = clip:GetSourceEndTime()
-    print("Clip source end time: " .. sourceEndTime) -- Debug: Print the source end time
-    return sourceEndTime
 end
 
 --- Return max_volume from ffmpeg for short section of audio
@@ -226,7 +215,7 @@ function Main()
         if filePath then
             print("Clip " .. i .. " file path: " .. filePath)
             -- Pass this file path to FFmpeg for audio analysis
-            local clipStartTime = GetClipStartTime(clip)
+            local clipStartTime = clip:GetSourceStartTime()
             local maxVolume = AnalyzeAudio(filePath, clipStartTime)
 
             -- Locate Start Point if audio is too loud at beginning of clip
@@ -244,15 +233,15 @@ function Main()
             end
 
             -- Locate end point if audio is too loud at end of clip (e.g. we haven't finished talking yet maybe)
-            local clipEndTime = GetClipEndTime(clip)
+            local clipEndTime = clip:GetSourceEndTime()
             maxVolume =  AnalyzeAudio(filePath, clipEndTime)
 
             -- Check if the next clip exists and get its start time
             local nextClipStart = nil
             local nextClipEnd = nil
             if clips[i + 1] then
-                nextClipStart = GetClipStartTime(clips[i + 1])
-                nextClipEnd = GetClipEndTime(clips[i + 1])
+                nextClipStart = clips[i + 1]:GetSourceStartTime()
+                nextClipEnd = clips[i + 1]:GetSourceEndTime()
             end
 
             -- If the next clip doesn't exist, set nextClipStart to a large value
@@ -260,7 +249,7 @@ function Main()
                 nextClipStart = math.huge
             end
 
-            if maxVolume and maxVolume > AudioThresholdEnd then -- Adjust threshold as needed
+            if maxVolume and maxVolume > AudioThresholdEnd then
                 print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i, maxVolume))
                 -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
                 while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
@@ -299,4 +288,4 @@ function Main()
     print("Auto spacing completed.")
 end
 
-Main()
+Main() -- Burn baby burn
