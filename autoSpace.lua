@@ -14,6 +14,16 @@
 --
 -- This currently only works for timelines with 1 Video and one 1 Audio Track
 
+
+-- TODO/Wishlist
+-- -------------
+-- - Add support for multiple video/audio tracks
+-- - Add support for selecting video/audio tracks
+-- Known issues:
+-- - The script currently only works for timelines with 1 Video and one 1 Audio Track
+-- - If you have multiple audio tracks in the source material, it will only produce the first audio track
+--   onto the new audio track
+-- - The new audio track is in mono (1.0), not stereo even if the source is a 2.0 audio track
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
 local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
@@ -52,8 +62,9 @@ AudioThresholdStart = -20
 AudioThresholdEnd = -30
 
 -- Amount of time to process audio to space in seconds
--- NOTE: the larger this is the more accurate the analysis, but the longer it takes
---       if the seek time is too large, it may not be able to find the start/end points
+-- NOTE: This effects both how much audio is processed at the beginning/end of the clips
+-- as well as the amount of time we move the start/end points in each step of the process
+-- too large of values will increasingly slow down the script and increase the occurance of large gaps
 AnalysisSeekTime = 0.2
 
 --- Converts a timecode string (e.g. "00:05:59:12") into a frame count.
@@ -98,7 +109,7 @@ function GetClipEndTime(clip)
     return sourceEndTime
 end
 
--- Return max_volume from ffmpeg for short section of audio
+--- Return max_volume from ffmpeg for short section of audio
 -- @param filePath (string) the filesystem path of the source media
 -- @param startTime (int) where in the file to start the analysis in SECONDS
 -- @return (float) the max_volume returned by ffmpeg or nil
