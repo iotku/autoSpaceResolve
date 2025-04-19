@@ -130,7 +130,49 @@ function AnalyzeAudio(filePath, startTime)
     return nil
 end
 
--- Main autoSpace function to run against active timeline
+--- Append the adjusted clip to the new tracks
+-- @param clip (Clip) The clip to append
+-- @param newVideoTrackIndex (int) The index of the new video track
+-- @param clipStartTime (float) The adjusted start time of the clip
+-- @param clipEndTime (float) The adjusted end time of the clip
+-- @return (boolean) True if the clip was successfully appended, false otherwise
+function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTime)
+    -- Append the adjusted clip to the new tracks
+    local mediaPoolItem = clip:GetMediaPoolItem()
+    if mediaPoolItem then
+        -- TODO: this is dependent on the playhead which can be moved during processing
+        -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
+        local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
+
+
+        -- Convert clipStartTime and clipEndTime to adding to the new tracks
+        local startFrame = math.floor(clipStartTime * TimelineFrameRate)
+        local endFrame = math.floor(clipEndTime * TimelineFrameRate)
+
+        -- Ensure startFrame and endFrame are within valid bounds
+        if startFrame < 0 then startFrame = 0 end
+        if endFrame <= startFrame then
+            print("Invalid clip range: startFrame >= endFrame")
+            return
+        end
+
+        local clipInfo = {
+            ["mediaPoolItem"] = mediaPoolItem,
+            ["startFrame"] = startFrame, -- Start from the adjusted clipStartTime
+            ["endFrame"] = endFrame, -- End at the adjusted clipEndTime
+            ["trackIndex"] = newVideoTrackIndex,
+            ["recordFrame"] = recordFrame -- Place the clip after the last one
+        }
+
+        local success = ResolveMediaPool:AppendToTimeline({clipInfo})
+        return success
+    else
+        print("Could not retrieve file path for clip ".. clip:GetName())
+        return false
+    end
+end
+
+--- Main autoSpace function to run against active timeline
 function Main()
     if Timeline then
         print("Connected to timeline: " .. Timeline:GetName())
@@ -233,44 +275,12 @@ function Main()
                 print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
             end
 
-            -- Convert clipStartTime and clipEndTime to adding to the new tracks
-            local startFrame = math.floor(clipStartTime * TimelineFrameRate)
-            local endFrame = math.floor(clipEndTime * TimelineFrameRate)
-
-            -- Append the adjusted clip to the new tracks
-            local mediaPoolItem = clip:GetMediaPoolItem()
-            if mediaPoolItem then
-                -- Convert clipStartTime and clipEndTime to frames
-
-                -- TODO: this is dependent on the playhead which can be moved during processing
-                -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
-                local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
-                -- Ensure startFrame and endFrame are within valid bounds
-                if startFrame < 0 then startFrame = 0 end
-                if endFrame <= startFrame then
-                    print("Invalid clip range: startFrame >= endFrame")
-                    return
-                end
-
-                -- Create the clipInfo table
-                local clipInfo = {
-                    ["mediaPoolItem"] = mediaPoolItem,
-                    ["startFrame"] = startFrame, -- Start from the adjusted clipStartTime
-                    ["endFrame"] = endFrame, -- End at the adjusted clipEndTime
-                    ["trackIndex"] = newVideoTrackIndex,
-                    ["recordFrame"] = recordFrame -- Place the clip after the last one
-                }
-
-                local success = ResolveMediaPool:AppendToTimeline({clipInfo})
-                if success then
-                    print("Clip added to new video track successfully.")
-                else
-                    print("Failed to add clip to new video track.")
-                end
+            local appendClip = AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTime)
+            if appendClip then
+                print(string.format("Clip %d appended successfully to new video track.", i))
             else
-                print("Could not retrieve file path for clip " .. i)
+                print(string.format("Failed to append clip %d to new video track.", i))
             end
-
             lastClipEnd = clipEndTime
         end
     end
