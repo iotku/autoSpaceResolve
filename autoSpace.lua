@@ -185,9 +185,17 @@ function Main()
     local initialVideoTrackCount = Timeline:GetTrackCount("video")
     local initialAudioTrackCount = Timeline:GetTrackCount("audio")
 
+    local initialAudioTrackSubType
+    if initialAudioTrackCount > 0 then
+        initialAudioTrackSubType = Timeline:GetTrackSubType("audio", 1) -- TODO: Select which audio track to process
+    else
+        print("No audio track found in the timeline.")
+        return
+    end
     -- Create a new video and audio track
     local videoTrackCreated = Timeline:AddTrack("video")
-    local audioTrackCreated = Timeline:AddTrack("audio")
+    local audioTrackCreated = Timeline:AddTrack("audio", initialAudioTrackSubType)
+    
 
     if not videoTrackCreated or not audioTrackCreated then
         print("Failed to create new video/audio track. Aborting.")
@@ -200,7 +208,7 @@ function Main()
     local newAudioTrackIndex = initialAudioTrackCount + 1
 
     -- Get all clips in the original video track
-    local clips = Timeline:GetItemListInTrack("video", 1)
+    local clips = Timeline:GetItemListInTrack("video", 1) -- TODO: Break out variable for the video track to process
 
     local lastClipEnd = 0
 
