@@ -45,7 +45,6 @@ else
     return
 end
 
-
 -- Get the MediaPool
 ResolveMediaPool = ResolveProject:GetMediaPool()
 
@@ -143,7 +142,6 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
         -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
         local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
 
-
         -- Convert clipStartTime and clipEndTime to adding to the new tracks
         local startFrame = math.floor(clipStartTime * TimelineFrameRate)
         local endFrame = math.floor(clipEndTime * TimelineFrameRate)
@@ -184,27 +182,15 @@ function Main()
     local initialVideoTrackCount = Timeline:GetTrackCount("video")
     local initialAudioTrackCount = Timeline:GetTrackCount("audio")
 
-    local initialAudioTrackSubType
+    local audioSubTypes = {}
     if initialAudioTrackCount > 0 then
-        initialAudioTrackSubType = Timeline:GetTrackSubType("audio", 1) -- TODO: Select which audio track to process
+        for i = 1, initialAudioTrackCount do
+            table.insert(audioSubTypes, Timeline:GetTrackSubType("audio", i))
+        end
     else
         print("No audio track found in the timeline.")
         return
     end
-    -- Create a new video and audio track
-    local videoTrackCreated = Timeline:AddTrack("video")
-    local audioTrackCreated = Timeline:AddTrack("audio", initialAudioTrackSubType)
-    
-
-    if not videoTrackCreated or not audioTrackCreated then
-        print("Failed to create new video/audio track. Aborting.")
-        return
-    end
-
-    -- TODO: Ensure we can handle timelines with multiple A/V tracks correctly
-    -- Determine the indices of the new tracks
-    local newVideoTrackIndex = initialVideoTrackCount + 1
-    local newAudioTrackIndex = initialAudioTrackCount + 1
 
     -- Get all clips in the original video track
     local clips = Timeline:GetItemListInTrack("video", 1) -- TODO: Break out variable for the video track to process
@@ -213,6 +199,26 @@ function Main()
 
     -- Set the current timecode to the beginning of the timeline
     Timeline:SetCurrentTimecode('01:00:00:00')
+
+    -- Create a new timeline
+    Timeline = ResolveMediaPool:CreateEmptyTimeline(Timeline:GetName() .. "- Autospaced")
+
+
+    -- Create a new video and audio tracks
+    local videoTrackCreated = Timeline:AddTrack("video")
+    if not videoTrackCreated then
+        print("Failed to create new video track. Aborting.")
+        return
+    end
+
+    print(initialAudioTrackCount)
+    for i = 1, initialAudioTrackCount do
+        local audioTrackCreated = Timeline:AddTrack("audio", audioSubTypes[i])
+        if not audioTrackCreated then
+            print("Failed to create new audio track. Aborting.")
+            return
+        end
+    end
 
     -- Loop through each clip and extract its file path
     for i, clip in ipairs(clips) do
@@ -261,7 +267,7 @@ function Main()
                 -- Move AnalyzeAudio start time forward until maxVolume is below threshold or clip start is the same as the following clip
                 while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
                     clipEndTime = clipEndTime +
-                    AnalysisSeekTime                             -- TODO, what happens when we hit the end of the source file? I expect this breaks
+                        AnalysisSeekTime -- TODO, what happens when we hit the end of the source file? I expect this breaks
                     maxVolume = AnalyzeAudio(filePath, clipEndTime)
                 end
 
@@ -284,7 +290,7 @@ function Main()
                 print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
             end
 
-            local appendClip = AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTime)
+            local appendClip = AppendClipToTimeline(clip, 1, clipStartTime, clipEndTime)
             if appendClip then
                 print(string.format("Clip %d appended successfully to new video track.", i))
             else
