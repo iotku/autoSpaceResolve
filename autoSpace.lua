@@ -23,7 +23,6 @@
 -- - The script currently only works for timelines with 1 Video and one 1 Audio Track
 -- - If you have multiple audio tracks in the source material, it will only produce the first audio track
 --   onto the new audio track
--- - The new audio track is in mono (1.0), not stereo even if the source is a 2.0 audio track
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
