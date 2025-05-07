@@ -82,9 +82,9 @@ function TimecodeToFrames(timecode)
 
     -- Convert the timecode to total frames
     local totalFrames = (hours * 3600 * TimelineFrameRate) +
-                        (minutes * 60 * TimelineFrameRate) +
-                        (seconds * TimelineFrameRate) +
-                        frames
+        (minutes * 60 * TimelineFrameRate) +
+        (seconds * TimelineFrameRate) +
+        frames
     return totalFrames
 end
 
@@ -111,7 +111,7 @@ function AnalyzeAudio(filePath, startTime)
     )
     print("Running command: " .. command) -- Debug: Print the command
     local handle = io.popen(command)
-    local result -- ffmpeg command output to parse
+    local result                          -- ffmpeg command output to parse
     if handle then
         result = handle:read("*a")
         handle:close()
@@ -158,16 +158,16 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
 
         local clipInfo = {
             ["mediaPoolItem"] = mediaPoolItem,
-            ["startFrame"] = startFrame, -- Start from the adjusted clipStartTime
-            ["endFrame"] = endFrame, -- End at the adjusted clipEndTime
+            ["startFrame"] = startFrame,  -- Start from the adjusted clipStartTime
+            ["endFrame"] = endFrame,      -- End at the adjusted clipEndTime
             ["trackIndex"] = newVideoTrackIndex,
             ["recordFrame"] = recordFrame -- Place the clip after the last one
         }
 
-        local success = ResolveMediaPool:AppendToTimeline({clipInfo})
+        local success = ResolveMediaPool:AppendToTimeline({ clipInfo })
         return success
     else
-        print("Could not retrieve file path for clip ".. clip:GetName())
+        print("Could not retrieve file path for clip " .. clip:GetName())
         return false
     end
 end
@@ -207,10 +207,8 @@ function Main()
     -- Set the current timecode to the beginning of the timeline
     Timeline:SetCurrentTimecode('01:00:00:00')
 
-    -- Loop through each clip and extract its file path (limit to first 5 clips)
+    -- Loop through each clip and extract its file path
     for i, clip in ipairs(clips) do
-        -- if i > 500 then break end -- Stop after processing 10 clips
-
         local filePath = GetClipFilePath(clip)
         if filePath then
             print("Clip " .. i .. " file path: " .. filePath)
@@ -220,8 +218,9 @@ function Main()
 
             -- Locate Start Point if audio is too loud at beginning of clip
             if maxVolume and maxVolume > AudioThresholdStart then -- Adjust threshold as needed
-                print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i, maxVolume))
-                -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
+                print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i,
+                    maxVolume))
+                -- Move AnalyzeAudio start time back until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
                 while maxVolume > AudioThresholdStart and clipStartTime > lastClipEnd do
                     clipStartTime = clipStartTime - AnalysisSeekTime
                     maxVolume = AnalyzeAudio(filePath, clipStartTime)
@@ -234,7 +233,7 @@ function Main()
 
             -- Locate end point if audio is too loud at end of clip (e.g. we haven't finished talking yet maybe)
             local clipEndTime = clip:GetSourceEndTime()
-            maxVolume =  AnalyzeAudio(filePath, clipEndTime)
+            maxVolume = AnalyzeAudio(filePath, clipEndTime)
 
             -- Check if the next clip exists and get its start time
             local nextClipStart = nil
@@ -250,10 +249,12 @@ function Main()
             end
 
             if maxVolume and maxVolume > AudioThresholdEnd then
-                print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i, maxVolume))
-                -- Move ffmpeg start time back by 0.1 seconds until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
+                print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i,
+                    maxVolume))
+                -- Move AnalyzeAudio start time forward until maxVolume is below threshold or clip start is the same as the following clip
                 while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
-                    clipEndTime = clipEndTime + AnalysisSeekTime -- TODO, what happens when we hit the end of the source file? I expect this breaks
+                    clipEndTime = clipEndTime +
+                    AnalysisSeekTime                             -- TODO, what happens when we hit the end of the source file? I expect this breaks
                     maxVolume = AnalyzeAudio(filePath, clipEndTime)
                 end
 
@@ -267,7 +268,8 @@ function Main()
                     if nextClipEnd and nextClipStart > nextClipEnd then
                         nextClipStart = nextClipEnd -- Ensure the next clip's start doesn't exceed its end
                     end
-                    print(string.format("Adjusted next clip's start time to %.2f seconds to avoid overlap.", nextClipStart))
+                    print(string.format("Adjusted next clip's start time to %.2f seconds to avoid overlap.",
+                        nextClipStart))
                 end
 
                 print(string.format("Adjusted end time to %.2f seconds, max volume: %.2f dB", clipEndTime, maxVolume))
