@@ -203,13 +203,6 @@ function Main()
     -- Create a new timeline
     Timeline = ResolveMediaPool:CreateEmptyTimeline(Timeline:GetName() .. "- Autospaced")
 
-    -- Create a new video and audio tracks
-    local videoTrackCreated = Timeline:AddTrack("video")
-    if not videoTrackCreated then
-        print("Failed to create new video track. Aborting.")
-        return
-    end
-
     -- FIXME: There doesn't seem to be a way to modify the default audio track type for the new timeline
     --        So we're just skipping the first audio track and assuming it is the default 2.0 stereo track
     --        Alternatively, we could add our clips with an offset (e.g. TrackIndex + 1) which would work
