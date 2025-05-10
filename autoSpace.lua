@@ -21,10 +21,16 @@
 -- - Add support for selecting video/audio tracks
 -- Known issues:
 -- - The script currently only works relevently for timelines with 1 Video track with no gaps
+-- - Windows: Terminal window flashes for each ffmpeg command
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
+-- WINDOWS <-- Install with winget `winget install --id=Gyan.FFmpeg  -e` --> (Get-Command ffmpeg).Source -replace '\\', '/'
+-- MACOS:
 local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
+
+-- Determine the null device based on the operating system
+NullDevice = package.config:sub(1, 1) == "\\" and "NUL" or "/dev/null"
 
 -- Get the Resolve application instance
 ResolveObj = app:GetResolve()
@@ -143,10 +149,9 @@ end
 -- @param duration ()
 -- @return (float) the max_volume returned by ffmpeg or nil
 function GetMaxVolume(filePath, startTime, duration)
-    -- TODO: Does input redirection work as expected on windows? is it even necessiary?
     local command = string.format(
-        ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null /dev/null 2>&1",
-        startTime, duration, filePath
+        ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null %s 2>&1",
+        startTime, duration, filePath, NullDevice
     )
     print("Running command: " .. command) -- Debug: Print the command
     local handle = io.popen(command)
