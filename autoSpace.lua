@@ -21,7 +21,6 @@
 -- - Add support for selecting video/audio tracks
 -- Known issues:
 -- - The script currently only works relevently for timelines with 1 Video track with no gaps
--- - Windows: Terminal window flashes for each ffmpeg command
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
