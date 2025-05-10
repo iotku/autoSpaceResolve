@@ -17,12 +17,10 @@
 
 -- TODO/Wishlist
 -- -------------
--- - Add support for multiple video/audio tracks
+-- - Add support selecting specific audio track to process
 -- - Add support for selecting video/audio tracks
 -- Known issues:
--- - The script currently only works for timelines with 1 Video and one 1 Audio Track
--- - If you have multiple audio tracks in the source material, it will only produce the first audio track
---   onto the new audio track
+-- - The script currently only works relevently for timelines with 1 Video track with no gaps
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
@@ -71,7 +69,6 @@ AnalysisSeekTime = 0.2
 -- @param timecode (string) Timecode in the format "HH:MM:SS:FF".
 -- @return (number) Total number of frames relative to TimelineFrameRate.
 function TimecodeToFrames(timecode)
-    -- Split the timecode into hours, minutes, seconds, and frames
     local hours, minutes, seconds, frames = timecode:match("(%d+):(%d+):(%d+):(%d+)")
     hours = tonumber(hours)
     minutes = tonumber(minutes)
@@ -113,12 +110,39 @@ function GetClipFilePath(clip)
     return nil
 end
 
+-- Process Clip audio to find section below target volume or cutoff
+-- @param filePath (string) the filesystem path of the source media
+-- @param target (float) the target volume to find
+-- @param startTime (int) where in the file to start the analysis in SECONDS
+-- @param duration (int) how long to analyze the audio in SECONDS, negative values move backwards
+-- @param cutoff (int) terminating condition to stop searching when reaching !IMPORTANT!
+function AnalyzeAudio(filePath, target, startTime, duration, cutoff)
+    local length = math.abs(duration) -- Ensure duration is positive for ffmpeg processing
+    local offset = startTime
+
+    local maxVolume = GetMaxVolume(filePath, startTime, length)
+    while maxVolume > target do
+        print("Current max volume too loud!: " .. maxVolume .. " at offset: " .. offset)
+
+        offset = offset + duration -- negative duration moves backwards in time
+        if duration < 0 and offset <= cutoff then return cutoff end
+        if duration > 0 and offset >= cutoff then return cutoff end
+
+        maxVolume = GetMaxVolume(filePath, offset, length)
+        if maxVolume <= target then
+            print("Found max volume: " .. maxVolume .. " at offset: " .. offset)
+            return offset
+        end
+    end
+    return startTime -- Return the original start time if no adjustment is needed
+end
+
 --- Return max_volume from ffmpeg for short section of audio
 -- @param filePath (string) the filesystem path of the source media
 -- @param startTime (int) where in the file to start the analysis in SECONDS
+-- @param duration ()
 -- @return (float) the max_volume returned by ffmpeg or nil
-function AnalyzeAudio(filePath, startTime)
-    local duration = AnalysisSeekTime -- Analyze the first AnalysisSeekTime seconds
+function GetMaxVolume(filePath, startTime, duration)
     -- TODO: Does input redirection work as expected on windows? is it even necessiary?
     local command = string.format(
         ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null /dev/null 2>&1",
@@ -142,7 +166,11 @@ function AnalyzeAudio(filePath, startTime)
             return maxVolume
         end
     end
-    return nil
+    print("FFmpeg Output:\n" .. result) -- Debug: Print the FFmpeg output
+    print("Error: Could not find max_volume in ffmpeg output.")
+    -- FIXME: For now we just return a large negative value when ffmpeg parsing fails
+    --        Generally this means we're at the end of the file, so this should be harmless...
+    return -999
 end
 
 --- Append the adjusted clip to the new tracks
@@ -195,8 +223,7 @@ function Main()
         return
     end
 
-    -- Get the current number of video and audio tracks
-    local initialVideoTrackCount = Timeline:GetTrackCount("video")
+    -- Get the current number of audio tracks
     local initialAudioTrackCount = Timeline:GetTrackCount("audio")
 
     local audioSubTypes = {}
@@ -232,40 +259,16 @@ function Main()
         end
     end
 
-    -- Loop through each clip and extract its file path
+    -- Loop through each clip from the original timeline
     for i, clip in ipairs(clips) do
         local filePath = GetClipFilePath(clip)
         if filePath then
-            print("Clip " .. i .. " file path: " .. filePath)
-            -- Pass this file path to FFmpeg for audio analysis
             local clipStartTime = clip:GetSourceStartTime()
-            local maxVolume = AnalyzeAudio(filePath, clipStartTime)
-
-            -- Locate Start Point if audio is too loud at beginning of clip
-            if maxVolume and maxVolume > AudioThresholdStart then -- Adjust threshold as needed
-                print(string.format("Clip %d: Audio too loud at start (%.2f dB). Attempting to adjust start point.", i,
-                    maxVolume))
-                -- Move AnalyzeAudio start time back until maxVolume is below threshold or clip start is the same (or lower) as the previous clip
-                while maxVolume > AudioThresholdStart and clipStartTime > lastClipEnd do
-                    clipStartTime = clipStartTime - AnalysisSeekTime
-                    maxVolume = AnalyzeAudio(filePath, clipStartTime)
-                end
-                print(string.format("Adjusted start time to %.2f seconds, max volume: %.2f dB", clipStartTime, maxVolume))
-                -- if the clip start is the same or lower as the previous clip (or the beginning of the source file), we can stop
-            else
-                print(string.format("Clip %d: Audio level acceptable at start (%.2f dB).", i, maxVolume or -999))
-            end
-
-            -- Locate end point if audio is too loud at end of clip (e.g. we haven't finished talking yet maybe)
             local clipEndTime = clip:GetSourceEndTime()
-            maxVolume = AnalyzeAudio(filePath, clipEndTime)
 
-            -- Check if the next clip exists and get its start time
             local nextClipStart = nil
-            local nextClipEnd = nil
             if clips[i + 1] then
                 nextClipStart = clips[i + 1]:GetSourceStartTime()
-                nextClipEnd = clips[i + 1]:GetSourceEndTime()
             end
 
             -- If the next clip doesn't exist, set nextClipStart to a large value
@@ -273,35 +276,11 @@ function Main()
                 nextClipStart = math.huge
             end
 
-            if maxVolume and maxVolume > AudioThresholdEnd then
-                print(string.format("Clip %d: Audio too loud at end (%.2f dB). Attempting to adjust end point.", i,
-                    maxVolume))
-                -- Move AnalyzeAudio start time forward until maxVolume is below threshold or clip start is the same as the following clip
-                while maxVolume > AudioThresholdEnd and clipEndTime < nextClipStart do
-                    clipEndTime = clipEndTime +
-                        AnalysisSeekTime -- TODO, what happens when we hit the end of the source file? I expect this breaks
-                    maxVolume = AnalyzeAudio(filePath, clipEndTime)
-                end
+            -- Analyze Audio to find the start and end points
+            clipStartTime = AnalyzeAudio(filePath, AudioThresholdStart, clipStartTime, -AnalysisSeekTime, lastClipEnd)
+            clipEndTime = AnalyzeAudio(filePath, AudioThresholdEnd, clipEndTime, AnalysisSeekTime, nextClipStart)
 
-                -- ensure clipEndTime is not greater than the start of the next clip
-                if clipEndTime > nextClipStart then
-                    clipEndTime = nextClipStart
-                end
-
-                -- Adjust the next clip's start time if it overlaps with the current clip's end time
-                if nextClipStart and nextClipStart < clipEndTime then
-                    if nextClipEnd and nextClipStart > nextClipEnd then
-                        nextClipStart = nextClipEnd -- Ensure the next clip's start doesn't exceed its end
-                    end
-                    print(string.format("Adjusted next clip's start time to %.2f seconds to avoid overlap.",
-                        nextClipStart))
-                end
-
-                print(string.format("Adjusted end time to %.2f seconds, max volume: %.2f dB", clipEndTime, maxVolume))
-            else
-                print(string.format("Clip %d: Audio level acceptable at end (%.2f dB).", i, maxVolume or -999))
-            end
-
+            -- Add the clip to the new timeline from the media pool with adjusted in/out points
             local appendClip = AppendClipToTimeline(clip, 1, clipStartTime, clipEndTime)
             if appendClip then
                 print(string.format("Clip %d appended successfully to new video track.", i))
