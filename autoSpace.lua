@@ -137,6 +137,56 @@ function AnalyzeAudio(filePath, target, startTime, duration, cutoff)
     return startTime -- Return the original start time if no adjustment is needed
 end
 
+function AnalyzeAudioSilence(filePath, target, startTime, duration, cutoff)
+    local offset = GetSilenceOffset(filePath, target, startTime, duration, cutoff) -- Return the original start time if no adjustment is needed
+    if offset then
+        print("Found silence: " .. " offset: " .. offset)
+        return offset
+    else 
+        print("No silence found.")
+        return 0
+    end
+end
+
+function GetSilenceOffset(filePath, target, startTime, duration, lastClipEnd)
+    print(string.format("Debug: lastClipEnd = %.3f, startTime = %.3f, startTime - lastClipEnd = %.3f", lastClipEnd, startTime, startTime - lastClipEnd))
+        local seg_len = startTime - lastClipEnd
+    if seg_len <= 0 then
+        print("Warning: seg_len is non-positive. Adjusting to a small positive value.")
+        seg_len = 0.1 -- Minimum valid segment length
+    end
+    local command = string.format(
+        ffmpegPath .. ' -hide_banner -nostats -ss %.3f -t %.3f -i %s -threads 10 -vn -sn -dn' ..
+                      ' -af "areverse,silencedetect=noise=%ddB:d=%.2f" -f null - 2>&1 | awk \'/silence_end/ && { print $8; exit }\'',
+        lastClipEnd, seg_len, filePath, target, math.abs(duration) -- seek_off, seg_len, input, noise_dB, min_dur
+    )
+    print("Running command: " .. command) -- Debug: Print the command
+    -- Run and read all ffmpeg output:
+    local pipe = io.popen(command)
+    if not pipe then
+        print("Failed to run command: " .. command)
+        return nil
+    end
+    local out = pipe:read("*a")
+    pipe:close()
+
+    local offset = tonumber(out)
+    if not offset then
+        print("Failed to read ffmpeg output or no silence detected.")
+        return nil
+    end
+
+    -- Calculate the absolute timestamp
+    local absolute = lastClipEnd + offset
+    print(string.format(
+        "Silence starts at %.3f seconds into segment -> Absolute time: %.3f seconds",
+        offset, absolute
+    ))
+
+    return offset
+end
+
+
 --- Return max_volume from ffmpeg for short section of audio
 -- @param filePath (string) the filesystem path of the source media
 -- @param startTime (int) where in the file to start the analysis in SECONDS
@@ -261,6 +311,7 @@ function Main()
 
     -- Loop through each clip from the original timeline
     for i, clip in ipairs(clips) do
+        if i > 5 then break end -- Debug: Limit to first 5 clips for testing
         local filePath = GetClipFilePath(clip)
         if filePath then
             local clipStartTime = clip:GetSourceStartTime()
@@ -277,9 +328,22 @@ function Main()
             end
 
             -- Analyze Audio to find the start and end points
-            clipStartTime = AnalyzeAudio(filePath, AudioThresholdStart, clipStartTime, -AnalysisSeekTime, lastClipEnd)
-            clipEndTime = AnalyzeAudio(filePath, AudioThresholdEnd, clipEndTime, AnalysisSeekTime, nextClipStart)
+            -- clipStartTime = AnalyzeAudio(filePath, AudioThresholdStart, clipStartTime, -AnalysisSeekTime, lastClipEnd)
+            -- clipEndTime = AnalyzeAudio(filePath, AudioThresholdEnd, clipEndTime, AnalysisSeekTime, nextClipStart)
 
+            -- If this is the first clip, set lastClipEnd to 0
+            if i == 1 and clipStartTime > 5 then
+                lastClipEnd = clipStartTime - 5
+            end
+
+            -- Analyze Audio to find the start point
+            local silenceOffset = AnalyzeAudioSilence(filePath, AudioThresholdStart, clipStartTime, AnalysisSeekTime*5, lastClipEnd)
+
+            -- Adjust clipStartTime by subtracting the silence offset
+            if silenceOffset then
+                clipStartTime = clipStartTime - silenceOffset
+                print(string.format("Adjusted clip start time: %.3f seconds", clipStartTime))
+            end
             -- Add the clip to the new timeline from the media pool with adjusted in/out points
             local appendClip = AppendClipToTimeline(clip, 1, clipStartTime, clipEndTime)
             if appendClip then
