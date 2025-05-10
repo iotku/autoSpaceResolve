@@ -25,12 +25,19 @@
 
 -- !! IMPORTANT !! You must set the ffmpegPath below to the path on YOUR system
 -- FULL Path to the FFmpeg executable (We use ffmpeg for audio analysis)
+-- MACOS <-- Install with homebrew `brew install ffmpeg`
+local ffmpegPath = "/opt/homebrew/bin/ffmpeg" -- MACOS Homebrew ffmpeg path
 -- WINDOWS <-- Install with winget `winget install --id=Gyan.FFmpeg  -e` --> (Get-Command ffmpeg).Source -replace '\\', '/'
--- MACOS:
-local ffmpegPath = "/opt/homebrew/bin/ffmpeg"
+-- local ffmpegPath = "C:/Users/user/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-7.1-full_build/bin/ffmpeg.exe"
 
 -- Determine the null device based on the operating system
 NullDevice = package.config:sub(1, 1) == "\\" and "NUL" or "/dev/null"
+
+if NullDevice == "NUL" then -- Windows ffi nonsense (requres asWinAPI.lua in the same directory)
+    -- Add the current directory to Lua's module search path
+    package.path = package.path .. ";C:/ProgramData/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Utility/?.lua"
+    AsWinAPI = require("asWinAPI")
+end
 
 -- Get the Resolve application instance
 ResolveObj = app:GetResolve()
@@ -150,19 +157,11 @@ end
 -- @return (float) the max_volume returned by ffmpeg or nil
 function GetMaxVolume(filePath, startTime, duration)
     local command = string.format(
-        ffmpegPath .. " -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null %s 2>&1",
+        ffmpegPath .. " -hide_banner -ss %.2f -t %.2f -i \"%s\" -filter:a volumedetect -f null %s",
         startTime, duration, filePath, NullDevice
     )
-    print("Running command: " .. command) -- Debug: Print the command
-    local handle = io.popen(command)
-    local result                          -- ffmpeg command output to parse
-    if handle then
-        result = handle:read("*a")
-        handle:close()
-    else
-        print("Error: AnalyzeAudio failed to close ffmpeg command.")
-        return nil
-    end
+
+    result = RunFFmpegCommand(command) -- Run the command and capture output
 
     -- Extract max volume from FFmpeg output
     for line in result:gmatch("[^\r\n]+") do
@@ -176,6 +175,27 @@ function GetMaxVolume(filePath, startTime, duration)
     -- FIXME: For now we just return a large negative value when ffmpeg parsing fails
     --        Generally this means we're at the end of the file, so this should be harmless...
     return -999
+end
+
+function RunFFmpegCommand(command)
+    if NullDevice == "NUL" then
+        -- Windows: Use the asWinAPI module to run the command
+        return AsWinAPI.run_command_capture_output(command)
+    end
+    
+    command = command .. " 2>&1"
+    -- MacOS: Use io.popen to run the command
+    print("Running command: " .. command) -- Debug: Print the command
+    local handle = io.popen(command)
+    local result                          -- ffmpeg command output to parse
+    if handle then
+        result = handle:read("*a")
+        handle:close()
+        return result
+    else
+        print("Error: AnalyzeAudio failed to close ffmpeg command.")
+        return nil
+    end
 end
 
 --- Append the adjusted clip to the new tracks
