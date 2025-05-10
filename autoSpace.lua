@@ -86,6 +86,23 @@ function TimecodeToFrames(timecode)
     return totalFrames
 end
 
+
+--- Converts a timecode string (e.g. "00:05:59:12") into seconds.
+--- @param timecode (string) Timecode in the format "HH:MM:SS:FF".
+--- @param framerate (number) The frame rate of the media.
+--- @return (number) Total number of seconds.
+function TimecodeToSeconds(timecode, framerate) -- e.g. for clip:GetMediaPoolItem():GetClipProperty("Duration")
+    local hours, minutes, seconds, frames = timecode:match("^(%d%d):(%d%d):(%d%d):(%d%d)$")
+    hours = tonumber(hours)
+    minutes = tonumber(minutes)
+    seconds = tonumber(seconds)
+    frames = tonumber(frames)
+
+    -- Convert the timecode to total seconds
+    local totalSeconds = (hours * 3600) + (minutes * 60) + seconds + (frames / framerate)
+    return totalSeconds
+end
+
 -- Function to get the file path of a clip
 function GetClipFilePath(clip)
     local mediaPoolItem = clip:GetMediaPoolItem()
