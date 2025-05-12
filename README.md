@@ -91,5 +91,5 @@ The script:
 
 ## Known Issues
 
-* Timeline playback head may be moved by the user during processing, affecting clip placement order.
-* There isn't a way to stop the script gracefully before it's finished. (In a pinch you can delete the `- Autospaced` timeline
+* There isn't a way to stop the script gracefully before it's finished. (In a pinch you can delete the `- Autospaced` timeline
+* If you switch windows/workspaces during processing clips may get posted without the relevent audio tracks

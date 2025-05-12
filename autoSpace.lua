@@ -70,6 +70,9 @@ AudioThresholdStart = -20
 -- A bit lower to account for trailing off
 AudioThresholdEnd = -30
 
+-- Keep track of total frames added to new timeline
+TotalFrames = 0
+
 -- Amount of time to process audio to space in seconds
 -- NOTE: This effects both how much audio is processed at the beginning/end of the clips
 -- as well as the amount of time we move the start/end points in each step of the process
@@ -160,8 +163,11 @@ function GetMaxVolume(filePath, startTime, duration)
         startTime, duration, filePath, NullDevice
     )
 
-    result = RunFFmpegCommand(command) -- Run the command and capture output
-
+    local result = RunCommandAndReturnOutput(command) -- Run the command and capture output
+    if not result then
+        print("FFmpeg output was nil")
+        return -999
+    end
     -- Extract max volume from FFmpeg output
     for line in result:gmatch("[^\r\n]+") do
         if line:find("max_volume") then
@@ -176,12 +182,12 @@ function GetMaxVolume(filePath, startTime, duration)
     return -999
 end
 
-function RunFFmpegCommand(command)
+function RunCommandAndReturnOutput(command)
     if NullDevice == "NUL" then
         -- Windows: Use the asWinAPI module to run the command
         return AsWinAPI.run_command_capture_output(command)
     end
-    
+
     command = command .. " 2>&1"
     -- MacOS: Use io.popen to run the command
     print("Running command: " .. command) -- Debug: Print the command
@@ -209,7 +215,7 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
     if mediaPoolItem then
         -- TODO: this is dependent on the playhead which can be moved during processing
         -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
-        local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
+ --       local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
 
         -- Convert clipStartTime and clipEndTime to adding to the new tracks
         local startFrame = math.floor(clipStartTime * TimelineFrameRate)
@@ -227,10 +233,13 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
             ["startFrame"] = startFrame,  -- Start from the adjusted clipStartTime
             ["endFrame"] = endFrame,      -- End at the adjusted clipEndTime
             ["trackIndex"] = newVideoTrackIndex,
-            ["recordFrame"] = recordFrame -- Place the clip after the last one
+            ["recordFrame"] = TotalFrames -- Place the clip after the last one
         }
 
         local success = ResolveMediaPool:AppendToTimeline({ clipInfo })
+        if success then
+            TotalFrames = TotalFrames + (startFrame - endFrame)
+        end
         return success
     else
         print("Could not retrieve file path for clip " .. clip:GetName())
