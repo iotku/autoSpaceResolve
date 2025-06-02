@@ -29,6 +29,9 @@ local ffmpegPath = "/opt/homebrew/bin/ffmpeg" -- MACOS Homebrew ffmpeg path
 -- WINDOWS <-- Install with winget `winget install --id=Gyan.FFmpeg  -e` --> (Get-Command ffmpeg).Source -replace '\\', '/'
 -- local ffmpegPath = "C:/Users/user/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-7.1-full_build/bin/ffmpeg.exe"
 
+-- If You want to use the GUI you must have the Studio version of Resolve, unfortunately since version 19.1
+USE_GUI = true -- Set to false to disable GUI and run in headless mode (e.g. for Free version of Resolve)
+
 -- Determine the null device based on the operating system
 NullDevice = package.config:sub(1, 1) == "\\" and "NUL" or "/dev/null"
 
@@ -55,29 +58,21 @@ else
     return
 end
 
--- Get the MediaPool
-ResolveMediaPool = ResolveProject:GetMediaPool()
-
--- Get the current timeline
-Timeline = ResolveProject:GetCurrentTimeline()
-
--- Get TL framerate
-TimelineFrameRate = Timeline:GetSetting("timelineFrameRate")
-
--- We consider any audio below -20dB to be silence
-AudioThresholdStart = -20
-
--- A bit lower to account for trailing off
-AudioThresholdEnd = -30
-
--- Keep track of total frames added to new timeline
-TotalFrames = 0
-
+-- DEFAULT VALUES
+AudioThresholdStart = -20 -- We consider any audio below -20dB to be silence
+AudioThresholdEnd = -30 -- A bit lower to account for trailing off
 -- Amount of time to process audio to space in seconds
 -- NOTE: This effects both how much audio is processed at the beginning/end of the clips
 -- as well as the amount of time we move the start/end points in each step of the process
 -- too large of values will increasingly slow down the script and increase the occurance of large gaps
 AnalysisSeekTime = 0.2
+
+-- Keep track of total frames added to new timeline
+TotalFrames = 0
+
+
+-- Escape hatch
+ProcessingCancelled = false
 
 --- Converts a timecode string (e.g. "00:05:59:12") into a frame count.
 -- The calculation is based on a global TimelineFrameRate.
@@ -248,7 +243,16 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
 end
 
 --- Main autoSpace function to run against active timeline
-function Main()
+function Main(AudioThresholdStart, AudioThresholdEnd, AnalysisSeekTime, progressSlider)
+    -- Get the MediaPool
+    ResolveMediaPool = ResolveProject:GetMediaPool()
+
+    -- Get the current timeline
+    Timeline = ResolveProject:GetCurrentTimeline()
+
+    -- Get TL framerate
+    TimelineFrameRate = Timeline:GetSetting("timelineFrameRate")
+
     if Timeline then
         print("Connected to timeline: " .. Timeline:GetName())
     else
@@ -278,7 +282,8 @@ function Main()
     Timeline:SetCurrentTimecode('01:00:00:00')
 
     -- Create a new timeline
-    Timeline = ResolveMediaPool:CreateEmptyTimeline(Timeline:GetName() .. "- Autospaced")
+    local newTimelineName = Timeline:GetName() .. " - Autospaced"
+    Timeline = ResolveMediaPool:CreateEmptyTimeline(newTimelineName)
 
     -- FIXME: There doesn't seem to be a way to modify the default audio track type for the new timeline
     --        So we're just skipping the first audio track and assuming it is the default 2.0 stereo track
@@ -294,6 +299,14 @@ function Main()
 
     -- Loop through each clip from the original timeline
     for i, clip in ipairs(clips) do
+        if USE_GUI and progressSlider then
+            progressSlider.Value = math.floor((i / #clips) * 100)
+        end
+        if Timeline:GetName() ~= newTimelineName or ProcessingCancelled then -- if timeline was changed abort
+            print("Processing cancelled by user.")
+            return
+        end
+
         local filePath = GetClipFilePath(clip)
         if filePath then
             local clipStartTime = clip:GetSourceStartTime()
@@ -327,4 +340,58 @@ function Main()
     print("Auto spacing completed.")
 end
 
-Main() -- Burn baby burn
+if USE_GUI then
+    ui = fu.UIManager
+    disp = bmd.UIDispatcher(ui)
+
+    win = disp:AddWindow({
+        ID = "AutoSpaceWin",
+        WindowTitle = "AutoSpace Settings",
+        Geometry = {100, 100, 400, 220},
+        ui:VGroup{
+            ID = "root",
+            ui:HGroup{
+                ui:Label{Text = "Audio Threshold Start (dB):"},
+                ui:LineEdit{ID = "thresholdStart", Text = tostring(AudioThresholdStart)}
+            },
+            ui:HGroup{
+                ui:Label{Text = "Audio Threshold End (dB):"},
+                ui:LineEdit{ID = "thresholdEnd", Text = tostring(AudioThresholdEnd)}
+            },
+            ui:HGroup{
+                ui:Label{Text = "Analysis Seek Time (s):"},
+                ui:LineEdit{ID = "seekTime", Text = tostring(AnalysisSeekTime)}
+            },
+            ui:HGroup{
+                ui:Button{ID = "runBtn", Text = "Run AutoSpace"},
+            },
+            ui.Slider{ID = "progressSlider", Value = 0, Minimum = 0, Maximum = 100, Enabled = false}
+        }
+    })
+
+    function win.On.runBtn.Clicked(ev)
+        local items = win:GetItems()
+        AudioThresholdStart = tonumber(items.thresholdStart.Text)
+        AudioThresholdEnd = tonumber(items.thresholdEnd.Text)
+        AnalysisSeekTime = tonumber(items.seekTime.Text)
+        items.progressSlider.Value = 0
+        coroutine.wrap(function() -- Run Main in a coroutine so UI can update
+            Main(AudioThresholdStart, AudioThresholdEnd, AnalysisSeekTime, items.progressSlider)
+            items.progressSlider.Value = 100
+        end)()
+    end
+
+    -- Handle the window close event
+    function win.On.AutoSpaceWin.Close(ev)
+        disp:ExitLoop()
+        ProcessingCancelled = true
+        print("AutoSpace window closed. Processing cancelled.")
+    end
+
+    win:Show()
+    disp:RunLoop()
+    win:Hide()
+else
+    -- If not using GUI, run the main function directly
+    Main(AudioThresholdStart, AudioThresholdEnd, AnalysisSeekTime)
+end
