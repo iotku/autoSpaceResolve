@@ -208,10 +208,6 @@ function AppendClipToTimeline(clip, newVideoTrackIndex, clipStartTime, clipEndTi
     -- Append the adjusted clip to the new tracks
     local mediaPoolItem = clip:GetMediaPoolItem()
     if mediaPoolItem then
-        -- TODO: this is dependent on the playhead which can be moved during processing
-        -- is it possible to prevent that, or can we make this relative to the last clip rather than the playhead?
- --       local recordFrame = TimecodeToFrames(Timeline:GetCurrentTimecode())
-
         -- Convert clipStartTime and clipEndTime to adding to the new tracks
         local startFrame = math.floor(clipStartTime * TimelineFrameRate)
         local endFrame = math.floor(clipEndTime * TimelineFrameRate)
@@ -341,36 +337,36 @@ function Main(AudioThresholdStart, AudioThresholdEnd, AnalysisSeekTime, progress
 end
 
 if USE_GUI then
-    ui = fu.UIManager
-    disp = bmd.UIDispatcher(ui)
+    Fui = fu.UIManager
+    Disp = bmd.UIDispatcher(Fui)
 
-    win = disp:AddWindow({
+    Window = Disp:AddWindow({
         ID = "AutoSpaceWin",
         WindowTitle = "AutoSpace Settings",
         Geometry = {100, 100, 400, 220},
-        ui:VGroup{
+        Fui:VGroup{
             ID = "root",
-            ui:HGroup{
-                ui:Label{Text = "Audio Threshold Start (dB):"},
-                ui:LineEdit{ID = "thresholdStart", Text = tostring(AudioThresholdStart)}
+            Fui:HGroup{
+                Fui:Label{Text = "Audio Threshold Start (dB):"},
+                Fui:LineEdit{ID = "thresholdStart", Text = tostring(AudioThresholdStart)}
             },
-            ui:HGroup{
-                ui:Label{Text = "Audio Threshold End (dB):"},
-                ui:LineEdit{ID = "thresholdEnd", Text = tostring(AudioThresholdEnd)}
+            Fui:HGroup{
+                Fui:Label{Text = "Audio Threshold End (dB):"},
+                Fui:LineEdit{ID = "thresholdEnd", Text = tostring(AudioThresholdEnd)}
             },
-            ui:HGroup{
-                ui:Label{Text = "Analysis Seek Time (s):"},
-                ui:LineEdit{ID = "seekTime", Text = tostring(AnalysisSeekTime)}
+            Fui:HGroup{
+                Fui:Label{Text = "Analysis Seek Time (s):"},
+                Fui:LineEdit{ID = "seekTime", Text = tostring(AnalysisSeekTime)}
             },
-            ui:HGroup{
-                ui:Button{ID = "runBtn", Text = "Run AutoSpace"},
+            Fui:HGroup{
+                Fui:Button{ID = "runBtn", Text = "Run AutoSpace"},
             },
-            ui.Slider{ID = "progressSlider", Value = 0, Minimum = 0, Maximum = 100, Enabled = false}
+            Fui.Slider{ID = "progressSlider", Value = 0, Minimum = 0, Maximum = 100, Enabled = false}
         }
     })
 
-    function win.On.runBtn.Clicked(ev)
-        local items = win:GetItems()
+    function Window.On.runBtn.Clicked(ev)
+        local items = Window:GetItems()
         AudioThresholdStart = tonumber(items.thresholdStart.Text)
         AudioThresholdEnd = tonumber(items.thresholdEnd.Text)
         AnalysisSeekTime = tonumber(items.seekTime.Text)
@@ -382,15 +378,15 @@ if USE_GUI then
     end
 
     -- Handle the window close event
-    function win.On.AutoSpaceWin.Close(ev)
-        disp:ExitLoop()
+    function Window.On.AutoSpaceWin.Close(ev)
+        Disp:ExitLoop()
         ProcessingCancelled = true
         print("AutoSpace window closed. Processing cancelled.")
     end
 
-    win:Show()
-    disp:RunLoop()
-    win:Hide()
+    Window:Show()
+    Disp:RunLoop()
+    Window:Hide()
 else
     -- If not using GUI, run the main function directly
     Main(AudioThresholdStart, AudioThresholdEnd, AnalysisSeekTime)
